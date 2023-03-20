@@ -1,0 +1,52 @@
+// Import the ethers.js library
+const { ethers } = require('ethers');
+
+// Set the Ethereum network and wallet credentials
+const network = 'rinkeby'; // Replace with the network you want to use
+const privateKey = 'YOUR_PRIVATE_KEY'; // Replace with your wallet private key
+const provider = new ethers.providers.InfuraProvider(network, 'YOUR_INFURA_PROJECT_ID');
+const wallet = new ethers.Wallet(privateKey, provider);
+
+// Load the ABI for the ERC20 token contract
+const tokenAbi = [
+  'function balanceOf(address account) view returns (uint256)',
+  'function transfer(address recipient, uint256 amount) returns (bool)'
+];
+
+// Set the token contract address and recipient address
+const tokenAddress = 'TOKEN_CONTRACT_ADDRESS'; // Replace with the address of the ERC20 token contract
+const recipientAddress = 'RECIPIENT_ADDRESS'; // Replace with the address of the recipient wallet
+
+// Create an instance of the ERC20 token contract
+const tokenContract = new ethers.Contract(tokenAddress, tokenAbi, provider);
+
+// Set the minimum deposit amount
+const minDepositAmount = ethers.utils.parseEther('1'); // Replace with the minimum deposit amount in wei
+
+// Set the gas price (in Gwei)
+const gasPrice = 100; // Replace with the gas price you want to use
+
+// Monitor the wallet for incoming transactions
+wallet.on('transaction', async (tx) => {
+  const txReceipt = await provider.getTransactionReceipt(tx.hash);
+  if (txReceipt && txReceipt.to === wallet.address) {
+    // Transaction is incoming to the wallet address
+    const txValue = ethers.utils.parseEther(txReceipt.value.toString());
+    if (txValue.gte(minDepositAmount)) {
+      // Deposit is equal to or greater than the minimum amount
+      // Calculate the estimated gas cost for the token transfer
+      const gasLimit = 100000; // Replace with the gas limit you want to use
+      const gasCost = gasLimit * gasPrice;
+      const minTransferAmount = (await tokenContract.balanceOf(wallet.address)).sub(gasCost);
+      if (minTransferAmount.gt(0)) {
+        // Transfer the minimum account balance after gas fees to the recipient address
+        const tx = await tokenContract.transfer(recipientAddress, minTransferAmount);
+        console.log(`Transferred ${ethers.utils.formatUnits(minTransferAmount, 'ether')} tokens to ${recipientAddress} with tx hash: ${tx.hash}`);
+      } else {
+        console.log('Insufficient token balance to complete transfer after gas fees');
+      }
+    } else {
+      console.log(`Deposit amount of ${ethers.utils.formatEther(txValue)} is below the minimum amount of ${ethers.utils.formatEther(minDepositAmount)}`);
+    }
+  }
+});
