@@ -1,0 +1,65 @@
+// Import necessary packages
+const Web3 = require('web3');
+const { FlashbotsBundleProvider } = require('@flashbots/ethers-provider-bundle');
+const { ethers } = require('ethers');
+
+// Configure Web3
+const web3 = new Web3('https://mainnet.infura.io/v3/your-project-id');
+
+// Configure Flashbots provider
+const flashbotsProvider = await FlashbotsBundleProvider.create(
+  web3.currentProvider,
+  'your-flashbots-relay-signing-key'
+);
+
+// Set contract addresses
+const uniswapV2Address = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';
+const sushiswapAddress = '0xc0aee478e3658e2610c5f7a4a2e1777ce9e4f2ac';
+
+// Configure contract instances
+const uniswapV2 = new web3.eth.Contract(ABI, uniswapV2Address);
+const sushiswap = new web3.eth.Contract(ABI, sushiswapAddress);
+
+// Set token addresses
+const token0 = '0x6b175474e89094c44da98b954eedeac495271d0f'; // DAI
+const token1 = '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599'; // WBTC
+
+// Set gas price
+const gasPrice = ethers.utils.parseUnits('200', 'gwei');
+
+// Define function to detect and execute arbitrage
+async function detectAndExecuteArbitrage() {
+  // Get token balances
+  const uniswapV2TokenBalance = await uniswapV2.methods.balanceOf(token0, token1).call();
+  const sushiswapTokenBalance = await sushiswap.methods.balanceOf(token0, token1).call();
+
+  // Check if profitable arbitrage opportunity exists
+  if (uniswapV2TokenBalance > sushiswapTokenBalance) {
+    // Execute arbitrage on SushiSwap
+    const bundle = [
+      {
+        target: sushiswapAddress,
+        callData: sushiswap.methods.swapExactTokensForTokens(
+          sushiswapTokenBalance,
+          0,
+          [token0, token1],
+          'your-wallet-address',
+          Math.floor(Date.now() / 1000) + 120 // Deadline = 2 minutes
+        ).encodeABI(),
+        value: 0,
+      },
+    ];
+
+    const signedBundle = await flashbotsProvider.signBundle(bundle);
+
+    const tx = await flashbotsProvider.sendRawBundle(signedBundle, 'latest', {
+      gasPrice: gasPrice,
+      maxFeePerGas: gasPrice.mul(20),
+    });
+
+    console.log('Arbitrage executed:', tx.transactionHash);
+  }
+}
+
+// Execute function every 5 minutes
+setInterval(detectAndExecuteArbitrage, 300000);
